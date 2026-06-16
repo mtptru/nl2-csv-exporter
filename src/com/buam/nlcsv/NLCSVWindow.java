@@ -20,6 +20,7 @@ public class NLCSVWindow extends JFrame {
 	private JTextField xOffsetField;
 	private JTextField yOffsetField;
 	private JTextField skipVerticesField;
+	private JTextField railDistanceField;
 
 	private static HelpDialog dialog;
 	private JTextField textField_1;
@@ -49,7 +50,7 @@ public class NLCSVWindow extends JFrame {
 		
 		setTitle("NoLimits Track to CSV Converter");
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		setBounds(100, 100, 465, 300);
+		setBounds(100, 100, 465, 330);
 		JPanel contentPane = new JPanel();
 		contentPane.setBorder(new EmptyBorder(5, 5, 5, 5));
 		setContentPane(contentPane);
@@ -115,6 +116,16 @@ public class NLCSVWindow extends JFrame {
 		skipVerticesField.setText("0");
 		skipVerticesField.setHorizontalAlignment(SwingConstants.RIGHT);
 		skipVerticesField.setColumns(5);
+
+		JLabel lblRailDistance = new JLabel("Rail Distance:");
+		panel_7.add(lblRailDistance);
+
+		railDistanceField = new JTextField();
+		railDistanceField.setToolTipText("Radial distance from the center spline. If > 0, separate left and right rail CSV files are also generated.");
+		panel_7.add(railDistanceField);
+		railDistanceField.setText("0");
+		railDistanceField.setHorizontalAlignment(SwingConstants.RIGHT);
+		railDistanceField.setColumns(5);
 
 		Component verticalStrut = Box.createVerticalStrut(20);
 		panel_1.add(verticalStrut);
@@ -240,7 +251,18 @@ public class NLCSVWindow extends JFrame {
 				showErrorMessage("Skip Vertices: Invalid number (Examples: 0, 1, 2 ...)");
 				return;
 			}
-			process(textField_1.getText(), textField.getText(), xOffset, yOffset, skipVertices);
+			float railDistance = 0f;
+			try {
+				railDistance = Float.parseFloat(railDistanceField.getText());
+			} catch(NumberFormatException nfe) {
+				showErrorMessage("Rail Distance: Invalid number (Examples: 0, 0.5, 1.25 ...)");
+				return;
+			}
+			if(railDistance < 0) {
+				showErrorMessage("Rail Distance: Value must be 0 or positive");
+				return;
+			}
+			process(textField_1.getText(), textField.getText(), xOffset, yOffset, skipVertices, railDistance);
 		}
 	}
 	
@@ -272,36 +294,36 @@ public class NLCSVWindow extends JFrame {
 		}
 	}
 	
-	public void process(String path, String csvFilePath, float xOffset, float yOffset, int skipVertices) {
-		if(path.equals("")) { 
+	public void process(String path, String csvFilePath, float xOffset, float yOffset, int skipVertices, float railDistance) {
+		if(path.equals("")) {
 			JOptionPane.showMessageDialog(this, "Please choose an LWO-File", "Error", JOptionPane.ERROR_MESSAGE);
 			return;
 		} else if(csvFilePath.equals("")) {
 			JOptionPane.showMessageDialog(this, "Please choose a path for the CSV-File", "Error", JOptionPane.ERROR_MESSAGE);
 			return;
 		}
-		
+
 		if(path.substring(path.length()-4).equals(".lwo")) {
-			processLwo(path, csvFilePath, xOffset, yOffset, skipVertices);
+			processLwo(path, csvFilePath, xOffset, yOffset, skipVertices, railDistance);
 		} else {
 			showErrorMessage("Specified file is not a .lwo file");
 		}
 	}
-	
-	public void processLwo(String path, String csvFilePath, float xOffset, float yOffset, int skipVertices) {
-		
+
+	public void processLwo(String path, String csvFilePath, float xOffset, float yOffset, int skipVertices, float railDistance) {
+
 		LWOLoader loader = new LWOLoader(path, this);
 		List<Vector3> vertices = loader.vertices;
-		
+
 		List<Vector3[]> spline = new ArrayList<>();
-		
+
 		int counter = 0;
 		Vector3[] temp = new Vector3[8];
-		
+
 		for(Vector3 vertex : vertices) {
 			counter++;
 			temp[counter-1] = vertex;
-			
+
 			if(counter == 8) {
 				counter = 0;
 				spline.add(new Vector3[] {temp[1], temp[0], temp[5], temp[3]});
@@ -318,25 +340,43 @@ public class NLCSVWindow extends JFrame {
 				spline.remove(vertex);
 			}
 		}
-		
+
+		// Center spline (existing behaviour).
+		CsvUtils.write(csvConfig, buildCsvData(spline, xOffset, yOffset), csvFilePath);
+
+		// When a rail distance is given, also export a left and a right rail spline.
+		// Each rail position is the center position shifted along the node's local
+		// left unit vector (which already rolls/banks with the track), so the rails
+		// stay parallel to the center spline - and to each other - at every point,
+		// including through turns and banked sections. The orientation vectors
+		// (Left/Up) are identical for all three splines.
+		if(railDistance > 0) {
+			CsvUtils.write(csvConfig, buildCsvData(spline, xOffset + railDistance, yOffset), railFilePath(csvFilePath, "left"));
+			CsvUtils.write(csvConfig, buildCsvData(spline, xOffset - railDistance, yOffset), railFilePath(csvFilePath, "right"));
+		}
+
+		this.complete();
+	}
+
+	/**
+	 * Builds the NL2 CSV rows for the given spline.
+	 *
+	 * @param leftOffset distance to shift each node's position along its local left unit vector
+	 * @param upOffset   distance to shift each node's position along its local up unit vector
+	 */
+	private List<List<String>> buildCsvData(List<Vector3[]> spline, float leftOffset, float upOffset) {
 		List<List<String>> csvData = new ArrayList<>();
-		
+
 		for(Vector3[] node : spline) {
-			/*System.out.println("Node " + (spline.indexOf(node)+1));
-			System.out.println(" 1{"+node[0].getX()+" "+node[0].getY()+" "+node[0].getZ()+"}");
-			System.out.println(" 2{"+node[1].getX()+" "+node[1].getY()+" "+node[1].getZ()+"}");
-			System.out.println(" 3{"+node[2].getX()+" "+node[2].getY()+" "+node[2].getZ()+"}");
-			System.out.println(" 4{"+node[3].getX()+" "+node[3].getY()+" "+node[3].getZ()+"}");*/
-			
 			List<String> csvLine = new ArrayList<>();
-			
+
 			Vector3 pos = Vector3.getMiddleValue(node);
 			Vector3 left = Vector3.getLeftVector(node, pos);
 			Vector3 up = Vector3.getUpVector(node, pos);
-			
-			pos = new Vector3((pos.getX() + left.getX()*xOffset), (pos.getY() + left.getY()*xOffset), (pos.getZ() + left.getZ()*xOffset));
-			pos = new Vector3((pos.getX() + up.getX()*yOffset), (pos.getY() + up.getY()*yOffset), (pos.getZ() + up.getZ()*yOffset));
-			
+
+			pos = new Vector3((pos.getX() + left.getX()*leftOffset), (pos.getY() + left.getY()*leftOffset), (pos.getZ() + left.getZ()*leftOffset));
+			pos = new Vector3((pos.getX() + up.getX()*upOffset), (pos.getY() + up.getY()*upOffset), (pos.getZ() + up.getZ()*upOffset));
+
 			// No.
 			csvLine.add(Integer.toString(spline.indexOf(node) + 1));
 			// PosX
@@ -363,12 +403,22 @@ public class NLCSVWindow extends JFrame {
 			csvLine.add(fd(Float.toString(up.getY())));
 			// UpZ
 			csvLine.add(fd(Float.toString(up.getZ())));
-			
+
 			csvData.add(csvLine);
 		}
-		
-		CsvUtils.write(csvConfig, csvData, csvFilePath);
-		this.complete();
+
+		return csvData;
+	}
+
+	/**
+	 * Derives a rail file path from the chosen center CSV path by inserting a
+	 * suffix (e.g. "myTrack.csv" -> "myTrack_left.csv").
+	 */
+	private String railFilePath(String csvFilePath, String suffix) {
+		if(csvFilePath.toLowerCase().endsWith(".csv")) {
+			return csvFilePath.substring(0, csvFilePath.length() - 4) + "_" + suffix + ".csv";
+		}
+		return csvFilePath + "_" + suffix + ".csv";
 	}
 	
 	private String fd(String string) {

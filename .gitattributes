@@ -1,0 +1,8 @@
+# Shell scripts must use LF so they run on Linux/macOS (and CI).
+*.sh text eol=lf
+
+# Windows scripts use CRLF.
+*.bat text eol=crlf
+
+# Treat the bundled jar as binary.
+*.jar binary
