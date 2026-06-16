@@ -10,8 +10,6 @@ This is the equivalent of using "Export track spline" with Nolimits 2 profession
 
 ## Build from source
 
-The project is pure Java with no external libraries — you only need a **JDK** (e.g. from [Adoptium](https://adoptium.net/)) to build.
-
 - **Windows:** double-click `build.bat` (or run it from a terminal). It compiles the sources and produces `NLCSV.jar` in the project root.
 - **macOS / Linux:** run `sh build.sh`.
 
@@ -46,4 +44,4 @@ When Rail Distance is greater than 0, two extra files are written next to your c
 - `<name>_left.csv`
 - `<name>_right.csv`
 
-Each rail position is the center position shifted along the track's local left/right direction at that point. Because that direction rolls and banks with the track, the two rails stay parallel to the center spline — and to each other — at every point, including through turns and banked sections. Leaving Rail Distance at `0` keeps the original behaviour (center spline only).
+Each rail position is the center position shifted along the track's local left/right direction at that point. Because that direction rolls and banks with the track, the two rails stay parallel to the center spline — and to each other — at every point, including through turns and banked sections. Leaving Rail Distance at `0` keeps the original behaviour (center spline only). This is particularly useful when there are no track inversions or significant banks or when you are modeling for 3d printing and other modeling applications.
